@@ -6,23 +6,131 @@ __email__ = ["jake.nunemaker@nrel.gov"]
 
 import numpy as np
 import pandas as pd
+from scipy import stats
+
+
+def dataproperty(f):
+    @property
+    def wrapper(self, *args, **kwargs):
+        if getattr(self, "data", None) is None:
+            raise AttributeError("Output has not been read yet.")
+        return f(self, *args, **kwargs)
+
+    return wrapper
 
 
 class OpenFASTOutput:
     """Base OpenFAST output class."""
 
     def __str__(self):
-
-        return getattr(
-            self, "description", f"Unread OpenFAST output at '{self.filepath}'"
-        )
+        return self.description
 
     @property
+    def description(self):
+        return getattr(self, "_desc", f"Unread OpenFAST output at '{self.filepath}'")
+
+    @dataproperty
     def df(self):
         """Returns `self.data` as a DataFrame."""
 
-        if getattr(self, "data", None) is None:
-            self.read()
+        return pd.DataFrame(self.data, columns=self.headers)
+
+    @dataproperty
+    def num_timesteps(self):
+        return self.data.shape[0]
+
+    @dataproperty
+    def num_channels(self):
+        return self.data.shape[1]
+
+    @dataproperty
+    def idxmins(self):
+        return np.argmin(self.data, axis=0)
+
+    @dataproperty
+    def idxmaxs(self):
+        return np.argmax(self.data, axis=0)
+
+    @dataproperty
+    def minima(self):
+        return np.min(self.data, axis=0)
+
+    @dataproperty
+    def maxima(self):
+        return np.max(self.data, axis=0)
+
+    @dataproperty
+    def ranges(self):
+        return self.maxima - self.minima
+
+    @dataproperty
+    def variable(self):
+        return np.where(self.ranges != 0.0)[0]
+
+    @dataproperty
+    def constant(self):
+        return np.where(self.ranges == 0.0)[0]
+
+    @dataproperty
+    def sums(self):
+        return np.sum(self.data, axis=0)
+
+    @dataproperty
+    def sums_squared(self):
+        return np.sum(self.data ** 2, axis=0)
+
+    @dataproperty
+    def sums_cubed(self):
+        return np.sum(self.data ** 3, axis=0)
+
+    @dataproperty
+    def sums_fourth(self):
+        return np.sum(self.data ** 4, axis=0)
+
+    @dataproperty
+    def sums_fourth(self):
+        return np.sum(self.data ** 4, axis=0)
+
+    @dataproperty
+    def second_moments(self):
+        return stats.moment(self.data, moment=2, axis=0)
+
+    @dataproperty
+    def third_moments(self):
+        return stats.moment(self.data, moment=3, axis=0)
+
+    @dataproperty
+    def fourth_moments(self):
+        return stats.moment(self.data, moment=4, axis=0)
+
+    @dataproperty
+    def means(self):
+        means = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
+        means[:, self.constant] = self.minima[self.constant]
+        means[:, self.variable] = self.sums / self.num_timesteps
+        return means
+
+    @dataproperty
+    def stddevs(self):
+        stddevs = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
+        stddevs[:, self.variable] = np.sqrt(self.second_moments)[self.variable]
+        return stddevs
+
+    @dataproperty
+    def skews(self):
+        skews = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
+        skews[:, self.variable] = (
+            self.third_moments[self.variable] / self.second_moments[self.variable] ** 3
+        )
+        return skews
+
+    @dataproperty
+    def kurtosis(self):
+        kurtosis = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
+        kurtosis[:, self.variable] = (
+            self.fourth_moments[self.variable]
+        ) / self.second_moments[self.variable] ** 2
+        return kurtosis
 
 
 class OpenFASTBinary(OpenFASTOutput):
@@ -56,7 +164,7 @@ class OpenFASTBinary(OpenFASTOutput):
 
             length = np.fromfile(f, np.int32, 1)[0]
             chars = np.fromfile(f, np.uint8, length)
-            self.description = "".join(map(chr, chars)).strip()
+            self._desc = "".join(map(chr, chars)).strip()
 
             self.build_headers(f, num_channels)
             time = self.build_time(f, time_info, num_timesteps)
