@@ -19,7 +19,13 @@ DIR = os.path.split(os.path.abspath(__file__))[0]
 def test_output():
 
     test_array = np.array(
-        [[1, 2, 3, 4, 5], [0, 0, 0, 0, 0], [10, 10, 10, 10], [1, 2, 3, 2, 1]]
+        [
+            [1, 0, 10, 1, 2],
+            [2, 0, 10, 2, 4],
+            [3, 0, 10, 3, 6],
+            [4, 0, 10, 2, 8],
+            [5, 0, 10, 1, 4],
+        ]
     )
 
     return OpenFASTOutput(test_array)

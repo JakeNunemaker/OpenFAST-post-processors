@@ -12,7 +12,7 @@ from scipy import stats
 def dataproperty(f):
     @property
     def wrapper(self, *args, **kwargs):
-        if getattr(self, "data", None) is None:
+        if getattr(self, "_data", None) is None:
             raise AttributeError("Output has not been read yet.")
         return f(self, *args, **kwargs)
 
@@ -41,8 +41,20 @@ class OpenFASTOutput:
         return getattr(self, "_desc", f"Unread OpenFAST output at '{self.filepath}'")
 
     @dataproperty
+    def data(self):
+        """Returns output data at `self._data`."""
+        return self._data
+
+    @data.setter
+    def data(self, data):
+        self._data = data
+
+    @dataproperty
     def df(self):
         """Returns `self.data` as a DataFrame."""
+
+        if getattr(self, "headers", None) is None:
+            return pd.DataFrame(self.data)
 
         return pd.DataFrame(self.data, columns=self.headers)
 
@@ -118,13 +130,13 @@ class OpenFASTOutput:
     def means(self):
         means = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
         means[:, self.constant] = self.minima[self.constant]
-        means[:, self.variable] = self.sums / self.num_timesteps
+        means[:, self.variable] = self.sums[self.variable] / self.num_timesteps
         return means
 
     @dataproperty
     def stddevs(self):
         stddevs = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
-        stddevs[:, self.variable] = np.sqrt(self.second_moments)[self.variable]
+        stddevs[:, self.variable] = np.sqrt(self.second_moments[self.variable])
         return stddevs
 
     @dataproperty
