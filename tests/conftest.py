@@ -16,6 +16,11 @@ DIR = os.path.split(os.path.abspath(__file__))[0]
 
 
 @pytest.fixture()
+def data_dir():
+    return os.path.join(DIR, "data")
+
+
+@pytest.fixture()
 def test_output():
 
     test_array = np.array(
@@ -46,3 +51,18 @@ def sample_output_unread():
     filepath = os.path.join(DIR, "data", "IEA15MW_DLC_ED_000.outb")
     output = OpenFASTBinary(filepath)
     return output
+
+
+@pytest.fixture()
+def combined_output():
+
+    data = []
+    for i in range(5):
+
+        fp = os.path.join(DIR, "data", f"IEA15MW_DLC_ED_{i:03d}.outb")
+        output = OpenFASTBinary(fp)
+        output.read()
+
+        data.append(output.data)
+
+    return OpenFASTOutput(np.vstack(data))
