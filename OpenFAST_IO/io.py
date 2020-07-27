@@ -143,7 +143,8 @@ class OpenFASTOutput:
     def skews(self):
         skews = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
         skews[:, self.variable] = (
-            self.third_moments[self.variable] / self.second_moments[self.variable] ** 3
+            self.third_moments[self.variable]
+            / np.sqrt(self.second_moments[self.variable]) ** 3
         )
         return skews
 

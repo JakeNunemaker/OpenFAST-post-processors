@@ -129,12 +129,20 @@ class pyLife:
         return self._maxima - self._minima
 
     @property
+    def variable(self):
+        return np.where(self.ranges != 0.0)[0]
+
+    @property
+    def constant(self):
+        return np.where(self.ranges == 0.0)[0]
+
+    @property
     def sums(self):
         return self._sums
 
     @sums.setter
     def sums(self, new):
-        self._sums += new
+        self._sums = new
 
     @property
     def means(self):
@@ -146,7 +154,7 @@ class pyLife:
 
     @sums_squared.setter
     def sums_squared(self, new):
-        self._sums_squared += new
+        self._sums_squared = new
 
     @property
     def sums_cubed(self):
@@ -154,7 +162,7 @@ class pyLife:
 
     @sums_cubed.setter
     def sums_cubed(self, new):
-        self._sums_cubed += new
+        self._sums_cubed = new
 
     @property
     def sums_fourth(self):
@@ -162,7 +170,7 @@ class pyLife:
 
     @sums_fourth.setter
     def sums_fourth(self, new):
-        self._sums_fourth += new
+        self._sums_fourth = new
 
     @property
     def second_moments(self):
@@ -197,8 +205,18 @@ class pyLife:
 
     @property
     def skews(self):
-        return self.third_moments / np.sqrt(self.second_moments) ** 3
+        skews = np.zeros(self.sums.shape, dtype=np.float64)
+        skews[:, self.variable] = (
+            self.third_moments[:, self.variable]
+            / np.sqrt(self.second_moments[:, self.variable]) ** 3
+        )
+        return skews
 
     @property
     def kurtosis(self):
-        return self.fourth_moments / self.second_moments ** 2
+        kurtosis = np.zeros(self.sums.shape, dtype=np.float64)
+        kurtosis[:, self.variable] = (
+            self.fourth_moments[:, self.variable]
+            / self.second_moments[:, self.variable] ** 2
+        )
+        return kurtosis
