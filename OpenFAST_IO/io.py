@@ -22,6 +22,17 @@ def dataproperty(f):
 class OpenFASTOutput:
     """Base OpenFAST output class."""
 
+    def __init__(self, data):
+        """
+        Creates an instance of `OpenFASTOutput`.
+
+        Parameters
+        ----------
+        data : np.ndarray
+        """
+
+        self.data = data
+
     def __str__(self):
         return self.description
 
