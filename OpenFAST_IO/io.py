@@ -63,6 +63,10 @@ class OpenFASTOutput:
         return self.data.shape[0]
 
     @dataproperty
+    def elapsed_time(self):
+        return self.time.max() - self.time.min()
+
+    @dataproperty
     def num_channels(self):
         return self.data.shape[1]
 
@@ -191,13 +195,17 @@ class OpenFASTBinary(OpenFASTOutput):
             self._desc = "".join(map(chr, chars)).strip()
 
             self.build_headers(f, num_channels)
-            time = self.build_time(f, time_info, num_timesteps)
+            self.build_time(f, time_info, num_timesteps)
 
             raw = np.fromfile(f, np.int16, count=num_points).reshape(
                 num_timesteps, num_channels
             )
             self.data = np.concatenate(
-                [time.reshape(num_timesteps, 1), (raw - self.offset) / self.slopes], 1
+                [
+                    self.time.reshape(num_timesteps, 1),
+                    (raw - self.offset) / self.slopes,
+                ],
+                1,
             )
 
     def build_headers(self, f, num_channels):
@@ -246,11 +254,11 @@ class OpenFASTBinary(OpenFASTOutput):
         if self.fmt == 1:
             scale, offset = info
             data = np.fromfile(f, np.int32, length)
-            return (data - offset) / scale
+            self.time = (data - offset) / scale
 
         else:
             t1, incr = info
-            return t1 + incr * np.arange(length)
+            self.time = t1 + incr * np.arange(length)
 
 
 class OpenFASTAscii(OpenFASTOutput):

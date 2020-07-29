@@ -34,6 +34,7 @@ class pyLife:
         ]
 
         self._samples = 0
+        self._elapsed = {}
         self._minima = np.ndarray(shape=(0,))
         self._maxima = np.ndarray(shape=(0,))
         self._ranges = np.ndarray(shape=(0,))
@@ -52,25 +53,27 @@ class pyLife:
         internal attributes.
         """
 
-        for i, fp in enumerate(self.filepaths):
+        for i, f in enumerate(self.files):
 
-            if fp.endswith("outb"):
+            fp = os.path.join(self.directory, f)
+            if f.endswith("outb"):
                 output = OpenFASTBinary(fp)
                 output.read()
 
-                if i == 0:
-                    self.initialize_sum_arrays(output.num_channels)
+            elif f.endswith("out"):
+                raise NotImplemented("ASCII input not yet implemented.")
 
-                self.find_new_minima(output.minima)
-                self.find_new_maxima(output.maxima)
-                self.sums += output.sums
-                self.sums_squared += output.sums_squared
-                self.sums_cubed += output.sums_cubed
-                self.sums_fourth += output.sums_fourth
-                self._samples += output.num_timesteps
+            if i == 0:
+                self.initialize_sum_arrays(output.num_channels)
 
-            else:
-                raise NotImplemented("Other file types not supported yet.")
+            self.find_new_minima(output.minima)
+            self.find_new_maxima(output.maxima)
+            self.sums += output.sums
+            self.sums_squared += output.sums_squared
+            self.sums_cubed += output.sums_cubed
+            self.sums_fourth += output.sums_fourth
+            self._samples += output.num_timesteps
+            self._elapsed[f] = output.elapsed_time
 
     def initialize_sum_arrays(self, num_chan):
         """
@@ -115,6 +118,10 @@ class pyLife:
             raise ValueError("No files have been read.")
 
         return self._samples
+
+    @property
+    def elapsed_times(self):
+        return self._elapsed
 
     @property
     def maxima(self):
