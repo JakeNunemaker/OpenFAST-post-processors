@@ -8,6 +8,7 @@ import os
 from fnmatch import fnmatch
 
 import numpy as np
+from scipy.signal import find_peaks
 
 from OpenFAST_IO import OpenFASTBinary
 
@@ -15,7 +16,14 @@ from OpenFAST_IO import OpenFASTBinary
 class pyLife:
     """Implementation of `mlife` in python."""
 
-    def __init__(self, directory, extensions=["*.outb"]):
+    def __init__(
+        self,
+        directory,
+        extensions=["*.outb"],
+        aggregate_statistics=True,
+        fatigue_channels=[],
+        filter_threshold=0,
+    ):
         """
         Creates an instance of `pyLife`.
 
@@ -26,15 +34,30 @@ class pyLife:
         extensions : list
             List of file extensions to consider.
             Default: ['*.out', '*.outb']
+        aggregate_statistics : bool
+            Flag for calculating aggregate statistics.
+        fatigue_channels : list
+            List of channels to perform fatigue analysis on.
+            Default: []
+        filter_threshold : int | lit
+            Threshold to apply to peak finding algorithm.
+            Default: 0.
         """
 
+        # Settings and file information
         self.directory = directory
         self._files = [
             fn for fn in os.listdir(directory) if self.valid_extension(fn, extensions)
         ]
+        self._as = aggregate_statistics
+        self._fc = fatigue_channels
+        self._ft = filter_threshold
 
+        # Initialize data structures
         self._samples = 0
+        self._channels = np.ndarray(shape=(0,))
         self._elapsed = {}
+        self._peaks = {}
         self._minima = np.ndarray(shape=(0,))
         self._maxima = np.ndarray(shape=(0,))
         self._ranges = np.ndarray(shape=(0,))
@@ -64,16 +87,33 @@ class pyLife:
                 raise NotImplemented("ASCII input not yet implemented.")
 
             if i == 0:
-                self.initialize_sum_arrays(output.num_channels)
+                self._channels = output.channels
+                self.initialize_sum_arrays(len(self.channels))
 
-            self.find_new_minima(output.minima)
-            self.find_new_maxima(output.maxima)
-            self.sums += output.sums
-            self.sums_squared += output.sums_squared
-            self.sums_cubed += output.sums_cubed
-            self.sums_fourth += output.sums_fourth
+            else:
+                if output.num_channels != len(self.channels):
+                    raise ValueError("Channel mismatch detected.")
+
             self._samples += output.num_timesteps
             self._elapsed[f] = output.elapsed_time
+
+            if self._as:
+                self.find_new_minima(output.minima)
+                self.find_new_maxima(output.maxima)
+                self.sums += output.sums
+                self.sums_squared += output.sums_squared
+                self.sums_cubed += output.sums_cubed
+                self.sums_fourth += output.sums_fourth
+
+            if self._fc:
+                file_peaks = {}
+                for chan in self._fc:
+                    idx = np.where(self.channels == chan)[0]
+                    file_peaks[chan] = self.determine_peaks(
+                        output.data[:, idx], prominence=self._ft
+                    )
+
+                self._peaks[f] = file_peaks
 
     def initialize_sum_arrays(self, num_chan):
         """
@@ -118,6 +158,10 @@ class pyLife:
             raise ValueError("No files have been read.")
 
         return self._samples
+
+    @property
+    def channels(self):
+        return self._channels
 
     @property
     def elapsed_times(self):
@@ -227,3 +271,52 @@ class pyLife:
             / self.second_moments[:, self.variable] ** 2
         )
         return kurtosis
+
+    def determine_peaks(self, data, prominence):
+        """
+        Finds the inflection points of `data` with required `prominence`.
+
+        Parameters
+        ----------
+        data : np.array
+        prominence : int | float
+            Required prominence to be considered a peak.
+
+        Returns
+        -------
+        np.array
+            Array of filtered peaks in `data`.
+        """
+
+        infl = self._find_inflections(data)
+        _max, _ = find_peaks(infl, prominence=prominence)
+        _min, _ = find_peaks(-infl, prominence=prominence)
+        idx = np.array([0, *np.sort(np.append(_max, _min)), len(infl) - 1])
+
+        return infl[idx]
+
+    @staticmethod
+    def _find_inflections(data):
+        """
+        Implementation of `mlife.determine_peaks`.
+
+        Parameters
+        ----------
+        data : np.array
+
+        Returns
+        -------
+        np.array
+            Array of inflection points in `data`.
+        """
+
+        end = data[-1]
+        data = data[np.where((data[1:] - data[:-1] != 0))[0]]
+        data = np.append(data, end)
+
+        back = data[1:-1] - data[:-2]
+        forw = data[2:] - data[1:-1]
+        sign = np.sign(back) + np.sign(forw)
+        idx = np.unique([0, *np.where(sign == 0)[0] + 1, len(data) - 1])
+
+        return data[idx]
