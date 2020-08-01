@@ -288,7 +288,7 @@ class pyLife:
             Array of filtered peaks in `data`.
         """
 
-        infl = self._find_inflections(data)
+        infl = self.find_extrema(data)
         _max, _ = find_peaks(infl, prominence=prominence)
         _min, _ = find_peaks(-infl, prominence=prominence)
         idx = np.array([0, *np.sort(np.append(_max, _min)), len(infl) - 1])
@@ -296,7 +296,7 @@ class pyLife:
         return infl[idx]
 
     @staticmethod
-    def _find_inflections(data):
+    def find_extrema(data):
         """
         Implementation of `mlife.determine_peaks`.
 
