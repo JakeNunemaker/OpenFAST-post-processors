@@ -49,7 +49,7 @@ def test_base_output(test_output):
 def test_sample_output(sample_output):
 
     assert sample_output.num_timesteps == 60001
-    assert sample_output.num_channels == 90
+    assert sample_output.num_channels == 88
 
 
 def test_sample_output_unread(sample_output_unread):

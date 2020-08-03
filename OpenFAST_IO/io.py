@@ -54,6 +54,16 @@ class OpenFASTOutput:
         Calculates additional channels as vector sums of recorded channels.
         """
 
+        for chan in self._calc_chan:
+
+            if chan == "RootFMxy1":
+                self._calculate_RootFMxy1()
+
+            if chan == "RootMMxy1":
+                self._calculate_RootMMxy1()
+
+    def _calculate_RootFMxy1(self):
+
         Fy = np.where(self.channels == "RootFxc1")[0]
         Fz = np.where(self.channels == "RootFyc1")[0]
 
@@ -65,6 +75,8 @@ class OpenFASTOutput:
             self._data = np.append(self._data, RootFMxy1, axis=1)
             self.channels = np.append(self.channels, "RootFMxy1")
             self.units = np.append(self.units, "kN")
+
+    def _calculate_RootMMxy1(self):
 
         My = np.where(self.channels == "RootMxc1")[0]
         Mz = np.where(self.channels == "RootMyc1")[0]
@@ -206,7 +218,7 @@ class OpenFASTOutput:
 class OpenFASTBinary(OpenFASTOutput):
     """OpenFAST binary output class."""
 
-    def __init__(self, filepath, **kwargs):
+    def __init__(self, filepath, calculated_channels=[], **kwargs):
         """
         Creates an instance of `OpenFASTBinary`.
 
@@ -216,6 +228,7 @@ class OpenFASTBinary(OpenFASTOutput):
         """
 
         self.filepath = filepath
+        self._calc_chan = calculated_channels
         self._chan_chars = kwargs.get("chan_char_length", 10)
         self._unit_chars = kwargs.get("unit_char_length", 10)
 
@@ -306,7 +319,7 @@ class OpenFASTAscii(OpenFASTOutput):
     new OpenFAST output formats.
     """
 
-    def __init__(self, filepath, **kwargs):
+    def __init__(self, filepath, calculated_channels=[], **kwargs):
         """
         Creates an instance of `OpenFASTAscii`.
 
@@ -316,6 +329,7 @@ class OpenFASTAscii(OpenFASTOutput):
         """
 
         self.filepath = filepath
+        self._calc_chan = calculated_channels
 
     @property
     def time(self):
