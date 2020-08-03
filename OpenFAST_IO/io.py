@@ -22,7 +22,7 @@ def dataproperty(f):
 class OpenFASTOutput:
     """Base OpenFAST output class."""
 
-    def __init__(self, data):
+    def __init__(self, data, calculated_channels=[]):
         """
         Creates an instance of `OpenFASTOutput`.
 
@@ -32,6 +32,8 @@ class OpenFASTOutput:
         """
 
         self.data = data
+        self._calc_chan = calculated_channels
+        self.calculated_channels()
 
     def __str__(self):
         return self.description

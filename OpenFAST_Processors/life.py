@@ -22,6 +22,7 @@ class pyLife:
         files=[],
         extensions=["*.out", "*.outb"],
         aggregate_statistics=True,
+        calculated_channels=[],
         fatigue_channels=[],
         filter_threshold=0,
     ):
@@ -62,6 +63,7 @@ class pyLife:
             ]
 
         self._as = aggregate_statistics
+        self._cc = calculated_channels
         self._fc = fatigue_channels
         self._ft = filter_threshold
 
@@ -92,11 +94,11 @@ class pyLife:
 
             fp = os.path.join(self.directory, f)
             if f.endswith("outb"):
-                output = OpenFASTBinary(fp)
+                output = OpenFASTBinary(fp, calculated_channels=self._cc)
                 output.read()
 
             elif f.endswith("out"):
-                output = OpenFASTAscii(fp)
+                output = OpenFASTAscii(fp, calculated_channels=self._cc)
                 output.read()
 
             if i == 0:
