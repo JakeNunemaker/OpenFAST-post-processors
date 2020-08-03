@@ -10,7 +10,7 @@ from fnmatch import fnmatch
 import numpy as np
 from scipy.signal import find_peaks
 
-from OpenFAST_IO import OpenFASTBinary
+from OpenFAST_IO import OpenFASTAscii, OpenFASTBinary
 
 
 class pyLife:
@@ -96,7 +96,8 @@ class pyLife:
                 output.read()
 
             elif f.endswith("out"):
-                raise NotImplemented("ASCII input not yet implemented.")
+                output = OpenFASTAscii(fp)
+                output.read()
 
             if i == 0:
                 self._channels = output.channels
@@ -209,7 +210,7 @@ class pyLife:
 
     @property
     def means(self):
-        return self.sums / self.samples
+        return (self.sums / self.samples).flatten()
 
     @property
     def sums_squared(self):
@@ -264,7 +265,7 @@ class pyLife:
 
     @property
     def stddevs(self):
-        return np.sqrt(self.second_moments)
+        return np.sqrt(self.second_moments).flatten()
 
     @property
     def skews(self):
@@ -273,7 +274,7 @@ class pyLife:
             self.third_moments[:, self.variable]
             / np.sqrt(self.second_moments[:, self.variable]) ** 3
         )
-        return skews
+        return skews.flatten()
 
     @property
     def kurtosis(self):
@@ -282,7 +283,7 @@ class pyLife:
             self.fourth_moments[:, self.variable]
             / self.second_moments[:, self.variable] ** 2
         )
-        return kurtosis
+        return kurtosis.flatten()
 
     def determine_peaks(self, data, prominence):
         """
