@@ -4,4 +4,4 @@ __maintainer__ = "Jake Nunemaker"
 __email__ = ["jake.nunemaker@nrel.gov"]
 
 
-from .io import OpenFASTBinary, OpenFASTOutput
+from .io import OpenFASTAscii, OpenFASTBinary, OpenFASTOutput

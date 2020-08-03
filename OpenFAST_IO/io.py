@@ -262,4 +262,67 @@ class OpenFASTBinary(OpenFASTOutput):
 
 
 class OpenFASTAscii(OpenFASTOutput):
-    pass
+    """
+    OpenFAST ASCII output class.
+
+    Built using data from the Mlife post-processor scripts. May not emcompass
+    new OpenFAST output formats.
+    """
+
+    def __init__(self, filepath, **kwargs):
+        """
+        Creates an instance of `OpenFASTAscii`.
+
+        Parameters
+        ----------
+        filepath : path-like
+        """
+
+        self.filepath = filepath
+
+    @property
+    def time(self):
+        return self.data[:, 0]
+
+    def read(self):
+        """Reads the ASCII file."""
+
+        with open(self.filepath, "rb") as f:
+            chandata, unitdata = self.parse_header(f)
+            self.build_headers(chandata, unitdata)
+            self.data = np.fromfile(f, float, sep="\t").reshape(-1, len(self.channels))
+
+    def parse_header(self, f):
+        """Reads the header data for file."""
+
+        _start = False
+        data = []
+
+        for _line in f:
+
+            line = _line.replace(b"\xb7", b"-").decode().strip()
+            data.append(line)
+
+            if _start:
+                break
+
+            if line.startswith("Time"):
+                _start = True
+
+        self._desc = " ".join([h.replace('"', "") for h in data[:-2]]).strip()
+
+        chandata, unitdata = data[-2:]
+        return chandata, unitdata
+
+    def build_headers(self, chandata, unitdata):
+        """Unpacks channels and units and builds the combined headers."""
+
+        self.channels = np.array([c for c in chandata.split("\t")])
+        self.units = np.array([u[1:-1] for u in unitdata.split("\t")])
+
+        self.headers = [
+            self.channels[k]
+            if self.units[k] in ["", "-"]
+            else f"{self.channels[k]} [{self.units[k]}]"
+            for k in range(len(self.channels))
+        ]
