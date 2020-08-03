@@ -49,11 +49,53 @@ class OpenFASTOutput:
     def data(self, data):
         self._data = data
 
+    def calculated_channels(self, **kwargs):
+        """
+        Calculates additional channels as vector sums of recorded channels.
+        """
+
+        Fy = np.where(self.channels == "RootFxc1")[0]
+        Fz = np.where(self.channels == "RootFyc1")[0]
+
+        if Fy.size == 1 and Fz.size == 1:
+
+            RootFMxy1 = np.sqrt(self.data[:, Fy] ** 2 + self.data[:, Fz] ** 2).reshape(
+                -1, 1
+            )
+            self._data = np.append(self._data, RootFMxy1, axis=1)
+            self.channels = np.append(self.channels, "RootFMxy1")
+            self.units = np.append(self.units, "kN")
+
+        My = np.where(self.channels == "RootMxc1")[0]
+        Mz = np.where(self.channels == "RootMyc1")[0]
+
+        if My.size == 1 and Mz.size == 1:
+
+            RootMMxy1 = np.sqrt(self.data[:, My] ** 2 + self.data[:, Mz] ** 2).reshape(
+                -1, 1
+            )
+            self._data = np.append(self._data, RootMMxy1, axis=1)
+            self.channels = np.append(self.channels, "RootMMxy1")
+            self.units = np.append(self.units, "kN-m")
+
+    @property
+    def headers(self):
+        if getattr(self, "units", None) is None:
+            return None
+
+        else:
+            return [
+                self.channels[k]
+                if self.units[k] in ["", "-"]
+                else f"{self.channels[k]} [{self.units[k]}]"
+                for k in range(self.num_channels + 1)
+            ]
+
     @dataproperty
     def df(self):
         """Returns `self.data` as a DataFrame."""
 
-        if getattr(self, "headers", None) is None:
+        if self.headers is None:
             return pd.DataFrame(self.data)
 
         return pd.DataFrame(self.data, columns=self.headers)
@@ -208,6 +250,8 @@ class OpenFASTBinary(OpenFASTOutput):
                 1,
             )
 
+        self.calculated_channels()
+
     def build_headers(self, f, num_channels):
         """
         Builds the channels, units and headers arrays.
@@ -227,13 +271,6 @@ class OpenFASTBinary(OpenFASTOutput):
             (num_channels + 1), self._unit_chars
         )
         self.units = np.array(list("".join(map(chr, c)).strip()[1:-1] for c in units))
-
-        self.headers = [
-            self.channels[k]
-            if self.units[k] in ["", "-"]
-            else f"{self.channels[k]} [{self.units[k]}]"
-            for k in range(num_channels + 1)
-        ]
 
     def build_time(self, f, info, length):
         """
@@ -292,6 +329,8 @@ class OpenFASTAscii(OpenFASTOutput):
             self.build_headers(chandata, unitdata)
             self.data = np.fromfile(f, float, sep="\t").reshape(-1, len(self.channels))
 
+        self.calculated_channels()
+
     def parse_header(self, f):
         """Reads the header data for file."""
 
@@ -319,10 +358,3 @@ class OpenFASTAscii(OpenFASTOutput):
 
         self.channels = np.array([c for c in chandata.split("\t")])
         self.units = np.array([u[1:-1] for u in unitdata.split("\t")])
-
-        self.headers = [
-            self.channels[k]
-            if self.units[k] in ["", "-"]
-            else f"{self.channels[k]} [{self.units[k]}]"
-            for k in range(len(self.channels))
-        ]
