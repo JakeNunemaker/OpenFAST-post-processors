@@ -40,10 +40,10 @@ def test_base_output(test_output):
     assert np.all(test_output.sums_fourth == np.array([979, 0, 50000, 115, 5920]))
 
     # Statistics outputs
-    assert test_output.means.shape == (1, 5)
-    assert test_output.stddevs.shape == (1, 5)
-    assert test_output.skews.shape == (1, 5)
-    assert test_output.kurtosis.shape == (1, 5)
+    assert test_output.means.shape == (5,)
+    assert test_output.stddevs.shape == (5,)
+    assert test_output.skews.shape == (5,)
+    assert test_output.kurtosis.shape == (5,)
 
 
 def test_sample_output(sample_output):

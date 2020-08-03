@@ -135,13 +135,13 @@ class OpenFASTOutput:
         means = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
         means[:, self.constant] = self.minima[self.constant]
         means[:, self.variable] = self.sums[self.variable] / self.num_timesteps
-        return means
+        return means.flatten()
 
     @dataproperty
     def stddevs(self):
         stddevs = np.zeros(shape=(1, self.num_channels), dtype=np.float64)
         stddevs[:, self.variable] = np.sqrt(self.second_moments[self.variable])
-        return stddevs
+        return stddevs.flatten()
 
     @dataproperty
     def skews(self):
@@ -150,7 +150,7 @@ class OpenFASTOutput:
             self.third_moments[self.variable]
             / np.sqrt(self.second_moments[self.variable]) ** 3
         )
-        return skews
+        return skews.flatten()
 
     @dataproperty
     def kurtosis(self):
@@ -158,7 +158,7 @@ class OpenFASTOutput:
         kurtosis[:, self.variable] = (
             self.fourth_moments[self.variable]
         ) / self.second_moments[self.variable] ** 2
-        return kurtosis
+        return kurtosis.flatten()
 
 
 class OpenFASTBinary(OpenFASTOutput):

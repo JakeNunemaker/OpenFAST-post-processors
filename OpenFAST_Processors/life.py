@@ -19,7 +19,8 @@ class pyLife:
     def __init__(
         self,
         directory,
-        extensions=["*.outb"],
+        files=[],
+        extensions=["*.out", "*.outb"],
         aggregate_statistics=True,
         fatigue_channels=[],
         filter_threshold=0,
@@ -31,6 +32,10 @@ class pyLife:
         ----------
         directory : path-like
             Path to OpenFAST output files.
+        files : list
+            Files to read. Extensions must match `extensions`. If empty, find
+            all files in `directory`.
+            Default: []
         extensions : list
             List of file extensions to consider.
             Default: ['*.out', '*.outb']
@@ -46,9 +51,16 @@ class pyLife:
 
         # Settings and file information
         self.directory = directory
-        self._files = [
-            fn for fn in os.listdir(directory) if self.valid_extension(fn, extensions)
-        ]
+        if files:
+            self._files = [fn for fn in files if self.valid_extension(fn, extensions)]
+
+        else:
+            self._files = [
+                fn
+                for fn in os.listdir(directory)
+                if self.valid_extension(fn, extensions)
+            ]
+
         self._as = aggregate_statistics
         self._fc = fatigue_channels
         self._ft = filter_threshold
