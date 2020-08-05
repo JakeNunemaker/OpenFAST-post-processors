@@ -16,16 +16,7 @@ from OpenFAST_IO import OpenFASTAscii, OpenFASTBinary
 class pyLife:
     """Implementation of `mlife` in python."""
 
-    def __init__(
-        self,
-        directory,
-        files=[],
-        extensions=["*.out", "*.outb"],
-        aggregate_statistics=True,
-        calculated_channels=[],
-        fatigue_channels=[],
-        filter_threshold=0,
-    ):
+    def __init__(self, directory, **kwargs):
         """
         Creates an instance of `pyLife`.
 
@@ -33,41 +24,96 @@ class pyLife:
         ----------
         directory : path-like
             Path to OpenFAST output files.
-        files : list
+        extensions : list
+            List of extensions to include from `directory`.
+            Not used if `files` is passed.
+            Default: ["*.out", "*.outb"]
+        files : list (optional)
             Files to read. Extensions must match `extensions`. If empty, find
             all files in `directory`.
             Default: []
-        extensions : list
-            List of file extensions to consider.
-            Default: ['*.out', '*.outb']
-        aggregate_statistics : bool
+        aggregate_statistics : bool (optional)
             Flag for calculating aggregate statistics.
-        fatigue_channels : list
+            Default: True
+        calculated_channels : list (optional)
+            Flags for additional calculated channels.
+            Default: []
+        fatigue_channels : list (optional)
             List of channels to perform fatigue analysis on.
             Default: []
-        filter_threshold : int | lit
+        filter_threshold : int | lit (optional)
             Threshold to apply to peak finding algorithm.
             Default: 0.
+        weibull_shape : int | float (optional)
+            Shape parameter of the windspeed distribution.
+            Default: 2 [m/s]
+        weibull_scale : int | float (optional)
+            Scale parameter of the windspeed distribution.
+            Default: 10 [m/s]
+        ws_in : int | float (optional)
+            Cut-in windspeed for the turbine.
+            Default: 3 [m/s]
+        ws_out : int | float (optional)
+            Cut-out windspeed for the turbine.
+            Default: 21 [m/s]
+        ws_max : int | float (optional)
+            Maximum windspeed value for bins.
+            Default: 44 [m/s]
+        max_bin_size : int | float (optional)
+            Maximum width of a windspeed bin.
+            Default: 1 [m/s]
+        design_life : int | float (optional)
+            Design lifetime of the turbine in seconds.
+            Default: 630720000 [s]
+        availability : int | float (optional)
+            Frace of the design life that the turbine is operating between
+            `ws_in` and `ws_out`.
+            Default: 1
+        uc_mult : float (optional)
+            Multiplier for binning unclosed cycles. Discard: 0, Full Cycle: 1
+            Default: 0.5
+        goodman : bool (optional)
+            Flag for using the Goodman corretion in the fatigue calculations.
+            Default: True
         """
 
-        # Settings and file information
         self.directory = directory
+        self.parse_settings(**kwargs)
+        self.initialize_data_structures(**kwargs)
+
+    def parse_settings(self, **kwargs):
+        """Parses settings from input kwargs."""
+
+        files = kwargs.get("files", [])
         if files:
-            self._files = [fn for fn in files if self.valid_extension(fn, extensions)]
+            self._files = files
 
         else:
+            extensions = kwargs.get("extensions", ["*.out", "*.outb"])
             self._files = [
                 fn
-                for fn in os.listdir(directory)
+                for fn in os.listdir(self.directory)
                 if self.valid_extension(fn, extensions)
             ]
 
-        self._as = aggregate_statistics
-        self._cc = calculated_channels
-        self._fc = fatigue_channels
-        self._ft = filter_threshold
+        self._as = kwargs.get("aggregate_statistics", True)
+        self._cc = kwargs.get("calculated_channels", [])
+        self._fc = kwargs.get("fatigue_channels", [])
+        self._ft = kwargs.get("filter_threshold", 0)
+        self._shape = kwargs.get("weibull_shape", 2)
+        self._scale = kwargs.get("weibull_scale", 10)
+        self._vin = kwargs.get("ws_in", 3)
+        self._vout = kwargs.get("ws_out", 21)
+        self._vmax = kwargs.get("ws_max", 44)
+        self._max_bin = kwargs.get("max_bin_size", 1)
+        self._design_life = kwargs.get("design_life", 630720000)
+        self._avail = kwargs.get("availability", 1)
+        self._uc_mult = kwargs.get("uc_mult", 0.5)
+        self._goodman = kwargs.get("goodman", True)
 
-        # Initialize data structures
+    def initialize_data_structures(self, **kwargs):
+        """Initializes required data structures."""
+
         self._samples = 0
         self._channels = np.ndarray(shape=(0,))
         self._elapsed = {}
@@ -150,14 +196,18 @@ class pyLife:
             self._minima = new
             return
 
-        self._minima = np.min(np.append(self._minima, new).reshape(2, len(new)), axis=0)
+        self._minima = np.min(
+            np.append(self._minima, new).reshape(2, len(new)), axis=0
+        )
 
     def find_new_maxima(self, new):
         if self._maxima.size == 0:
             self._maxima = new
             return
 
-        self._maxima = np.max(np.append(self._maxima, new).reshape(2, len(new)), axis=0)
+        self._maxima = np.max(
+            np.append(self._maxima, new).reshape(2, len(new)), axis=0
+        )
 
     @property
     def files(self):
