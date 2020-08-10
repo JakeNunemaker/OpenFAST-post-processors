@@ -8,6 +8,7 @@ import os
 from fnmatch import fnmatch
 
 import numpy as np
+from scipy.stats import weibull_min
 from scipy.signal import find_peaks
 
 from OpenFAST_IO import OpenFASTAscii, OpenFASTBinary
@@ -385,3 +386,84 @@ class pyLife:
         idx = np.unique([0, *np.where(sign == 0)[0] + 1, len(data) - 1])
 
         return data[idx]
+
+    def compute_windspeed_bins(self):
+        """
+        Finds bins of width less than or equual to `self._max_bin` for the
+        following ranges:
+        - 0 to cut-in
+        - cut-in to cut-out
+        - cut-out to max
+
+        Returns
+        -------
+        np.array
+            Upper boundaries of each bin.
+        np.array
+            Probabilities based on the CDF of the Weibull distribution defined
+            by `self._shape` and `self._scale`.
+        """
+
+        args = (self._max_bin, self._shape, self._scale)
+        _, _, upper1, probabilities1 = self.compute_bins(0, self._vin, *args)
+        _, _, upper2, probabilities2 = self.compute_bins(
+            self._vin, self._vout, *args
+        )
+        _, _, upper3, probabilities3 = self.compute_bins(
+            self._vout, self._vmax, *args
+        )
+
+        boundaries = np.concatenate([upper1, upper2, upper3])
+        probabilities = np.concatenate(
+            [probabilities1, probabilities2, probabilities3]
+        )
+
+        return boundaries, probabilities
+
+    @staticmethod
+    def compute_bins(vmin, vmax, maxbin, c, k):
+        """
+        Finds bin boundaries with maximum `vmax`, minimum `vmin` and max bin
+        size `maxbin`. Also returns the weibull cumulative distribution
+        probability of each bin with shape factor `c` and scale factor `k`.
+
+        Parameters
+        ----------
+        vmin : int | float
+            Range minimum.
+        vmax : int | float
+            Range maximum.
+        maxbin : int | float
+            Maximum bin width.
+        c : int | float
+            Weibull shape factor.
+        k : int | float
+            Weibull scale factor.
+
+        Returns
+        -------
+        int
+            Number of bins.
+        float
+            Bin width.
+        list
+            List of upper boundaries of each bin.
+        np.array
+            Weibull probability of each bin.
+        """
+
+        num_bins = int(np.ceil((vmax - vmin) / maxbin))
+        probabilities = np.zeros(num_bins)
+        width = (vmax - vmin) / num_bins
+        upper_bounds = []
+
+        for i in range(num_bins):
+
+            bot = vmin + i * width
+            top = bot + width
+            upper_bounds.append(top)
+
+            dist = weibull_min(c, scale=k)
+            probabilities[i] = dist.cdf(top) - dist.cdf(bot)
+
+        return num_bins, width, upper_bounds, probabilities
