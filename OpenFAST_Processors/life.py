@@ -85,19 +85,12 @@ class pyLife:
     def parse_settings(self, **kwargs):
         """Parses settings from input kwargs."""
 
-        files = kwargs.get("files", [])
-        if files:
-            self._files = files
+        self._files = {
+            "operating": kwargs.get("operating_files", []),
+            "idle": kwargs.get("idling_files", []),
+            "discrete": kwargs.get("discrete_files", [])
+        }
 
-        else:
-            extensions = kwargs.get("extensions", ["*.out", "*.outb"])
-            self._files = [
-                fn
-                for fn in os.listdir(self.directory)
-                if self.valid_extension(fn, extensions)
-            ]
-
-        self._as = kwargs.get("aggregate_statistics", True)
         self._cc = kwargs.get("calculated_channels", [])
         self._fc = kwargs.get("fatigue_channels", [])
         self._ft = kwargs.get("filter_threshold", 0)
@@ -131,7 +124,7 @@ class pyLife:
     def valid_extension(fp, extensions):
         return any([fnmatch(fp, ext) for ext in extensions])
 
-    def read_files(self):
+    def compute_aggregate_statistics(self):
         """
         Reads `self.files`, appending the sums, sums^2, sums^3 and sums^4 to
         internal attributes.
@@ -158,15 +151,19 @@ class pyLife:
 
             self._samples += output.num_timesteps
             self._elapsed[f] = output.elapsed_time
+            self.find_new_minima(output.minima)
+            self.find_new_maxima(output.maxima)
+            self.sums += output.sums
+            self.sums_squared += output.sums_squared
+            self.sums_cubed += output.sums_cubed
+            self.sums_fourth += output.sums_fourth
+    
+    def compute_fatigue(self):
+        """
+        TODO:
+        """
 
-            if self._as:
-                self.find_new_minima(output.minima)
-                self.find_new_maxima(output.maxima)
-                self.sums += output.sums
-                self.sums_squared += output.sums_squared
-                self.sums_cubed += output.sums_cubed
-                self.sums_fourth += output.sums_fourth
-
+        for i, f in enumerate(self.files):
             if self._fc:
                 file_peaks = {}
                 for chan in self._fc:
@@ -211,8 +208,20 @@ class pyLife:
         )
 
     @property
+    def operating_files(self):
+        return self._files["operating"]
+    
+    @property
+    def idle_files(self):
+        return self._files["idle"]
+    
+    @property
+    def discrete_files(self):
+        return self._files["discrete"]
+
+    @property
     def files(self):
-        return self._files
+        return [*self.operating_files, *self.idle_files, *self.discrete_files]
 
     @property
     def filepaths(self):
