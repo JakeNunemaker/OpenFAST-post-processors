@@ -8,6 +8,8 @@ import os
 from fnmatch import fnmatch
 
 import numpy as np
+import pandas as pd
+import fatpack
 from scipy.stats import weibull_min
 from scipy.signal import find_peaks
 
@@ -39,9 +41,9 @@ class pyLife:
         calculated_channels : list (optional)
             Flags for additional calculated channels.
             Default: []
-        fatigue_channels : list (optional)
-            List of channels to perform fatigue analysis on.
-            Default: []
+        fatigue_channels : dict (optional)
+            Dictionary with format:
+            'channel': 'fatigue slope'
         filter_threshold : int | lit (optional)
             Threshold to apply to peak finding algorithm.
             Default: 0.
@@ -88,7 +90,7 @@ class pyLife:
         self._files = {
             "operating": kwargs.get("operating_files", []),
             "idle": kwargs.get("idling_files", []),
-            "discrete": kwargs.get("discrete_files", [])
+            "discrete": kwargs.get("discrete_files", []),
         }
 
         self._cc = kwargs.get("calculated_channels", [])
@@ -124,6 +126,23 @@ class pyLife:
     def valid_extension(fp, extensions):
         return any([fnmatch(fp, ext) for ext in extensions])
 
+    def read_file(self, f):
+        """"""
+
+        fp = os.path.join(self.directory, f)
+        if f.endswith("outb"):
+            output = OpenFASTBinary(fp, calculated_channels=self._cc)
+            output.read()
+
+        elif f.endswith("out"):
+            output = OpenFASTAscii(fp, calculated_channels=self._cc)
+            output.read()
+
+        else:
+            raise NotImplementedError("Other file formats not supported yet.")
+
+        return output
+
     def compute_aggregate_statistics(self):
         """
         Reads `self.files`, appending the sums, sums^2, sums^3 and sums^4 to
@@ -132,14 +151,7 @@ class pyLife:
 
         for i, f in enumerate(self.files):
 
-            fp = os.path.join(self.directory, f)
-            if f.endswith("outb"):
-                output = OpenFASTBinary(fp, calculated_channels=self._cc)
-                output.read()
-
-            elif f.endswith("out"):
-                output = OpenFASTAscii(fp, calculated_channels=self._cc)
-                output.read()
+            output = self.read_file(f)
 
             if i == 0:
                 self._channels = output.channels
@@ -157,22 +169,6 @@ class pyLife:
             self.sums_squared += output.sums_squared
             self.sums_cubed += output.sums_cubed
             self.sums_fourth += output.sums_fourth
-    
-    def compute_fatigue(self):
-        """
-        TODO:
-        """
-
-        for i, f in enumerate(self.files):
-            if self._fc:
-                file_peaks = {}
-                for chan in self._fc:
-                    idx = np.where(self.channels == chan)[0]
-                    file_peaks[chan] = self.determine_peaks(
-                        output.data[:, idx], prominence=self._ft
-                    )
-
-                self._peaks[f] = file_peaks
 
     def initialize_sum_arrays(self, num_chan):
         """
@@ -210,11 +206,11 @@ class pyLife:
     @property
     def operating_files(self):
         return self._files["operating"]
-    
+
     @property
     def idle_files(self):
         return self._files["idle"]
-    
+
     @property
     def discrete_files(self):
         return self._files["discrete"]
@@ -347,54 +343,56 @@ class pyLife:
         )
         return kurtosis.flatten()
 
-    def determine_peaks(self, data, prominence):
-        """
-        Finds the inflection points of `data` with required `prominence`.
+    # TODO: Unused with the inclusion of fatpack?
+    # def determine_peaks(self, data, prominence):
+    #     """
+    #     Finds the inflection points of `data` with required `prominence`.
 
-        Parameters
-        ----------
-        data : np.array
-        prominence : int | float
-            Required prominence to be considered a peak.
+    #     Parameters
+    #     ----------
+    #     data : np.array
+    #     prominence : int | float
+    #         Required prominence to be considered a peak.
 
-        Returns
-        -------
-        np.array
-            Array of filtered peaks in `data`.
-        """
+    #     Returns
+    #     -------
+    #     np.array
+    #         Array of filtered peaks in `data`.
+    #     """
 
-        infl = self.find_extrema(data)
-        _max, _ = find_peaks(infl, prominence=prominence)
-        _min, _ = find_peaks(-infl, prominence=prominence)
-        idx = np.array([0, *np.sort(np.append(_max, _min)), len(infl) - 1])
+    #     infl = self.find_extrema(data)
+    #     _max, _ = find_peaks(infl, prominence=prominence)
+    #     _min, _ = find_peaks(-infl, prominence=prominence)
+    #     idx = np.array([0, *np.sort(np.append(_max, _min)), len(infl) - 1])
 
-        return infl[idx]
+    #     return infl[idx]
 
-    @staticmethod
-    def find_extrema(data):
-        """
-        Implementation of `mlife.determine_peaks`.
+    # TODO: Unused with the inclusion of fatpack?
+    # @staticmethod
+    # def find_extrema(data):
+    #     """
+    #     Implementation of `mlife.determine_peaks`.
 
-        Parameters
-        ----------
-        data : np.array
+    #     Parameters
+    #     ----------
+    #     data : np.array
 
-        Returns
-        -------
-        np.array
-            Array of inflection points in `data`.
-        """
+    #     Returns
+    #     -------
+    #     np.array
+    #         Array of inflection points in `data`.
+    #     """
 
-        end = data[-1]
-        data = data[np.where((data[1:] - data[:-1] != 0))[0]]
-        data = np.append(data, end)
+    #     end = data[-1]
+    #     data = data[np.where((data[1:] - data[:-1] != 0))[0]]
+    #     data = np.append(data, end)
 
-        back = data[1:-1] - data[:-2]
-        forw = data[2:] - data[1:-1]
-        sign = np.sign(back) + np.sign(forw)
-        idx = np.unique([0, *np.where(sign == 0)[0] + 1, len(data) - 1])
+    #     back = data[1:-1] - data[:-2]
+    #     forw = data[2:] - data[1:-1]
+    #     sign = np.sign(back) + np.sign(forw)
+    #     idx = np.unique([0, *np.where(sign == 0)[0] + 1, len(data) - 1])
 
-        return data[idx]
+    #     return data[idx]
 
     def compute_windspeed_bins(self):
         """
@@ -476,3 +474,65 @@ class pyLife:
             probabilities[i] = dist.cdf(top) - dist.cdf(bot)
 
         return num_bins, width, upper_bounds, probabilities
+
+    def compute_dels(self, **kwargs):
+        """Computes damage equivalent loads for channels in `self._fc`."""
+
+        dfs = []
+        names = []
+
+        for f in self.files:
+
+            DELs = []
+            output = self.read_file(f)
+
+            for chan, slope in self._fc.items():
+
+                try:
+                    idx = np.where(output.channels == chan)[0][0]
+                    ts = output.data[:, idx]
+
+                except IndexError:
+                    print(f"Channel '{chan}' not found in file '{f}'.")
+                    DELs.append(np.NaN)
+                    continue
+
+                DEL = self._compute_del(
+                    ts, slope, output.elapsed_time, **kwargs
+                )
+                DELs.append(DEL)
+
+            dfs.append(DELs)
+            names.append(output.dlc)
+
+        df = pd.DataFrame(np.transpose(dfs)).T
+        df.columns = self._fc.keys()
+        df["DLC"] = names
+
+        return df.set_index("DLC")
+
+    def _compute_del(self, ts, slope, elapsed, **kwargs):
+        """
+        Computes damage equivalent load of input `ts`.
+
+        Parameters
+        ----------
+        ts : np.array
+            Time series to calculate DEL for.
+        slope : int | float
+            Slope of the fatigue curve.
+        elapsed : int | float
+            Elapsed time of the time series.
+        rainflow_bins : int
+            Number of bins used in rainflow analysis.
+            Default: 100
+        """
+
+        bins = kwargs.get("rainflow_bins", 100)
+
+        ranges = fatpack.find_rainflow_ranges(ts)
+        Nrf, Srf = fatpack.find_range_count(ranges, 100)
+        DELs = Srf ** slope * Nrf / elapsed
+        DEL = DELs.sum() ** (1 / slope)
+
+        return DEL

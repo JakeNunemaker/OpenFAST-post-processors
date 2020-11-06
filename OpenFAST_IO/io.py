@@ -4,6 +4,8 @@ __maintainer__ = "Jake Nunemaker"
 __email__ = ["jake.nunemaker@nrel.gov"]
 
 
+import os
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -22,7 +24,7 @@ def dataproperty(f):
 class OpenFASTOutput:
     """Base OpenFAST output class."""
 
-    def __init__(self, data, calculated_channels=[]):
+    def __init__(self, data, dlc, calculated_channels=[]):
         """
         Creates an instance of `OpenFASTOutput`.
 
@@ -32,6 +34,7 @@ class OpenFASTOutput:
         """
 
         self.data = data
+        self._dlc = dlc
         self._calc_chan = calculated_channels
         self.calculated_channels()
 
@@ -39,8 +42,14 @@ class OpenFASTOutput:
         return self.description
 
     @property
+    def dlc(self):
+        return self._dlc
+
+    @property
     def description(self):
-        return getattr(self, "_desc", f"Unread OpenFAST output at '{self.filepath}'")
+        return getattr(
+            self, "_desc", f"Unread OpenFAST output at '{self.filepath}'"
+        )
 
     @dataproperty
     def data(self):
@@ -71,9 +80,9 @@ class OpenFASTOutput:
 
         if Fy.size == 1 and Fz.size == 1:
 
-            RootFMxy1 = np.sqrt(self.data[:, Fy] ** 2 + self.data[:, Fz] ** 2).reshape(
-                -1, 1
-            )
+            RootFMxy1 = np.sqrt(
+                self.data[:, Fy] ** 2 + self.data[:, Fz] ** 2
+            ).reshape(-1, 1)
             self._data = np.append(self._data, RootFMxy1, axis=1)
             self.channels = np.append(self.channels, "RootFMxy1")
             self.units = np.append(self.units, "kN")
@@ -85,9 +94,9 @@ class OpenFASTOutput:
 
         if My.size == 1 and Mz.size == 1:
 
-            RootMMxy1 = np.sqrt(self.data[:, My] ** 2 + self.data[:, Mz] ** 2).reshape(
-                -1, 1
-            )
+            RootMMxy1 = np.sqrt(
+                self.data[:, My] ** 2 + self.data[:, Mz] ** 2
+            ).reshape(-1, 1)
             self._data = np.append(self._data, RootMMxy1, axis=1)
             self.channels = np.append(self.channels, "RootMMxy1")
             self.units = np.append(self.units, "kN-m")
@@ -234,6 +243,10 @@ class OpenFASTBinary(OpenFASTOutput):
         self._chan_chars = kwargs.get("chan_char_length", 10)
         self._unit_chars = kwargs.get("unit_char_length", 10)
 
+    @property
+    def dlc(self):
+        return self.filepath.split(".")[-1]
+
     def read(self):
         """Reads the binary file."""
 
@@ -280,12 +293,16 @@ class OpenFASTBinary(OpenFASTOutput):
         channels = np.fromfile(
             f, np.uint8, self._chan_chars * (num_channels + 1)
         ).reshape((num_channels + 1), self._chan_chars)
-        self.channels = np.array(list("".join(map(chr, c)).strip() for c in channels))
-
-        units = np.fromfile(f, np.uint8, self._unit_chars * (num_channels + 1)).reshape(
-            (num_channels + 1), self._unit_chars
+        self.channels = np.array(
+            list("".join(map(chr, c)).strip() for c in channels)
         )
-        self.units = np.array(list("".join(map(chr, c)).strip()[1:-1] for c in units))
+
+        units = np.fromfile(
+            f, np.uint8, self._unit_chars * (num_channels + 1)
+        ).reshape((num_channels + 1), self._unit_chars)
+        self.units = np.array(
+            list("".join(map(chr, c)).strip()[1:-1] for c in units)
+        )
 
     def build_time(self, f, info, length):
         """
@@ -334,6 +351,10 @@ class OpenFASTAscii(OpenFASTOutput):
         self._calc_chan = calculated_channels
 
     @property
+    def dlc(self):
+        return self.filepath.split(".")[-1]
+
+    @property
     def time(self):
         return self.data[:, 0]
 
@@ -343,7 +364,9 @@ class OpenFASTAscii(OpenFASTOutput):
         with open(self.filepath, "rb") as f:
             chandata, unitdata = self.parse_header(f)
             self.build_headers(chandata, unitdata)
-            self.data = np.fromfile(f, float, sep="\t").reshape(-1, len(self.channels))
+            self.data = np.fromfile(f, float, sep="\t").reshape(
+                -1, len(self.channels)
+            )
 
         self.calculated_channels()
 
