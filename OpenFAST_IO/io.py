@@ -38,11 +38,20 @@ class OpenFASTOutput:
         self._calc_chan = calculated_channels
         self.calculated_channels()
 
+    def __getitem__(self, chan):
+        try:
+            idx = np.where(self.channels == chan)[0][0]
+
+        except IndexError:
+            raise IndexError(f"Channel '{chan}' not found.")
+
+        return self.data[:, idx]
+
     def __str__(self):
         return self.description
 
     @property
-    def dlc(self):
+    def filename(self):
         return self._dlc
 
     @property
@@ -244,8 +253,8 @@ class OpenFASTBinary(OpenFASTOutput):
         self._unit_chars = kwargs.get("unit_char_length", 10)
 
     @property
-    def dlc(self):
-        return self.filepath.split(".")[-1]
+    def filename(self):
+        return os.path.split(self.filepath)[-1]
 
     def read(self):
         """Reads the binary file."""
@@ -351,8 +360,8 @@ class OpenFASTAscii(OpenFASTOutput):
         self._calc_chan = calculated_channels
 
     @property
-    def dlc(self):
-        return self.filepath.split(".")[-1]
+    def filename(self):
+        return os.path.split(self.filepath)[-1]
 
     @property
     def time(self):

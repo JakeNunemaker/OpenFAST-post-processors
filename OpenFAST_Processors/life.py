@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import fatpack
 from scipy.stats import weibull_min
-from scipy.signal import find_peaks
 
 from OpenFAST_IO import OpenFASTAscii, OpenFASTBinary
 
@@ -31,9 +30,14 @@ class pyLife:
             List of extensions to include from `directory`.
             Not used if `files` is passed.
             Default: ["*.out", "*.outb"]
-        files : list (optional)
-            Files to read. Extensions must match `extensions`. If empty, find
-            all files in `directory`.
+        operating_files : list (optional)
+            Operating files to read.
+            Default: []
+        idling_files : list (optional)
+            Idling files to read.
+            Default: []
+        discrete_files : list (optional)
+            Discrete files to read.
             Default: []
         aggregate_statistics : bool (optional)
             Flag for calculating aggregate statistics.
@@ -82,7 +86,11 @@ class pyLife:
 
         self.directory = directory
         self.parse_settings(**kwargs)
-        self.initialize_data_structures(**kwargs)
+        self.initialize(**kwargs)
+
+    @staticmethod
+    def valid_extension(fp, extensions):
+        return any([fnmatch(fp, ext) for ext in extensions])
 
     def parse_settings(self, **kwargs):
         """Parses settings from input kwargs."""
@@ -94,7 +102,7 @@ class pyLife:
         }
 
         self._cc = kwargs.get("calculated_channels", [])
-        self._fc = kwargs.get("fatigue_channels", [])
+        self._fc = kwargs.get("fatigue_channels", {})
         self._ft = kwargs.get("filter_threshold", 0)
         self._shape = kwargs.get("weibull_shape", 2)
         self._scale = kwargs.get("weibull_scale", 10)
@@ -107,13 +115,15 @@ class pyLife:
         self._uc_mult = kwargs.get("uc_mult", 0.5)
         self._goodman = kwargs.get("goodman", True)
 
-    def initialize_data_structures(self, **kwargs):
+    def initialize(self, **kwargs):
         """Initializes required data structures."""
 
+        self._summary_stats = {}
+        self._aggregate_stats = {}
+        self._dels = []
         self._samples = 0
         self._channels = np.ndarray(shape=(0,))
         self._elapsed = {}
-        self._peaks = {}
         self._minima = np.ndarray(shape=(0,))
         self._maxima = np.ndarray(shape=(0,))
         self._ranges = np.ndarray(shape=(0,))
@@ -121,54 +131,6 @@ class pyLife:
         self._sums_squared = np.ndarray(shape=(0,))
         self._sums_cubed = np.ndarray(shape=(0,))
         self._sums_fourth = np.ndarray(shape=(0,))
-
-    @staticmethod
-    def valid_extension(fp, extensions):
-        return any([fnmatch(fp, ext) for ext in extensions])
-
-    def read_file(self, f):
-        """"""
-
-        fp = os.path.join(self.directory, f)
-        if f.endswith("outb"):
-            output = OpenFASTBinary(fp, calculated_channels=self._cc)
-            output.read()
-
-        elif f.endswith("out"):
-            output = OpenFASTAscii(fp, calculated_channels=self._cc)
-            output.read()
-
-        else:
-            raise NotImplementedError("Other file formats not supported yet.")
-
-        return output
-
-    def compute_aggregate_statistics(self):
-        """
-        Reads `self.files`, appending the sums, sums^2, sums^3 and sums^4 to
-        internal attributes.
-        """
-
-        for i, f in enumerate(self.files):
-
-            output = self.read_file(f)
-
-            if i == 0:
-                self._channels = output.channels
-                self.initialize_sum_arrays(len(self.channels))
-
-            else:
-                if output.num_channels != len(self.channels):
-                    raise ValueError("Channel mismatch detected.")
-
-            self._samples += output.num_timesteps
-            self._elapsed[f] = output.elapsed_time
-            self.find_new_minima(output.minima)
-            self.find_new_maxima(output.maxima)
-            self.sums += output.sums
-            self.sums_squared += output.sums_squared
-            self.sums_cubed += output.sums_cubed
-            self.sums_fourth += output.sums_fourth
 
     def initialize_sum_arrays(self, num_chan):
         """
@@ -185,7 +147,189 @@ class pyLife:
         self._sums_cubed = np.zeros(shape=(1, num_chan), dtype=np.float64)
         self._sums_fourth = np.zeros(shape=(1, num_chan), dtype=np.float64)
 
+    def process_files(self, **kwargs):
+        """
+        Processes all files for summary statistics, aggregate statistics and
+        configured damage equivalent loads. This class runs all files in serial.
+        """
+
+        for i, f in enumerate(self.files):
+
+            output = self.read_file(f)
+            if i == 0:
+                self._channels = output.channels
+                self.initialize_sum_arrays(len(self.channels))
+
+            else:
+                if output.num_channels != len(self.channels):
+                    raise ValueError("Channel mismatch detected.")
+
+            self.append_summary_stats(output, **kwargs)
+            self.append_aggregate_stats(output, **kwargs)
+            self.append_DELs(output, **kwargs)
+
+        self.post_process(**kwargs)
+
+    def append_summary_stats(self, output, **kwargs):
+        """
+        Appends summary statistics to `self._summary_statistics` for each file.
+
+        Parameters
+        ----------
+        output : OpenFASTOutput
+        """
+
+        fstats = {}
+        for channel in output.channels:
+            if channel in ["time", "Time"]:
+                continue
+
+            fstats[channel] = {
+                "min": float(min(output[channel])),
+                "max": float(max(output[channel])),
+                "std": float(np.std(output[channel])),
+                "mean": float(np.mean(output[channel])),
+                "abs": float(max(np.abs(output[channel]))),
+                "integrated": float(np.trapz(output["Time"], output[channel])),
+            }
+
+        self._summary_stats[output.filename] = fstats
+
+    def append_aggregate_stats(self, output, **kwargs):
+        """
+        Reads `self.files`, appending the sums, sums^2, sums^3 and sums^4 to
+        internal attributes for later use in `self.aggregate_stats`.
+
+        Parameters
+        ----------
+        output : OpenFASTOutput
+        """
+
+        self._samples += output.num_timesteps
+        self._elapsed[output.filename] = output.elapsed_time
+        self.find_new_minima(output.minima)
+        self.find_new_maxima(output.maxima)
+        self.sums += output.sums
+        self.sums_squared += output.sums_squared
+        self.sums_cubed += output.sums_cubed
+        self.sums_fourth += output.sums_fourth
+
+    def post_process(self, **kwargs):
+        """Post processes internal data to produce DataFrame outputs."""
+
+        # Summary statistics
+        ss = (
+            pd.DataFrame.from_dict(self._summary_stats, orient="index")
+            .stack()
+            .to_frame()
+        )
+        ss = pd.DataFrame(ss[0].values.tolist(), index=ss.index)
+        self._summary_stats = ss
+
+        # Aggregate statistics
+        agg = {}
+        for idx, chan in enumerate(self.channels):
+            if chan in ["time", "Time"]:
+                continue
+
+            agg[chan] = {
+                "min": self.minima[idx],
+                "max": self.maxima[idx],
+                "mean": self.means[idx],
+                "std": self.stddevs[idx],
+                "skew": self.skews[idx],
+                "kurtosis": self.kurtosis[idx],
+            }
+        self._aggregate_stats = pd.DataFrame(agg).T
+
+        # Damage equivalent loads
+        dels = pd.DataFrame(np.transpose(self._dels)).T
+        dels.columns = self._fc.keys()
+        dels["name"] = self.files
+        self._dels = dels.set_index("name")
+
+    def read_file(self, f):
+        """
+        Reads input file `f` and returns an instsance of one of the
+        `OpenFASTOutput` subclasses.
+
+        Parameters
+        ----------
+        f : str
+            Filename that is appended to `self.directory`
+        """
+
+        fp = os.path.join(self.directory, f)
+        if f.endswith(
+            "outb"
+        ):  # TODO: Convert to try/except with UnicodeError?
+            output = OpenFASTBinary(fp, calculated_channels=self._cc)
+            output.read()
+
+        elif f.endswith("out"):
+            output = OpenFASTAscii(fp, calculated_channels=self._cc)
+            output.read()
+
+        else:
+            raise NotImplementedError("Other file formats not supported yet.")
+
+        return output
+
+    def get_load_rankings(self, ranking_vars, ranking_stats, **kwargs):
+        """
+        Returns load rankings across all files in `self.files`.
+
+        Parameters
+        ----------
+        rankings_vars : list
+            List of variables to evaluate for the ranking process.
+        ranking_stats : list
+            Summary statistic to evalulate. Currently supports 'min', 'max',
+            'abs', 'mean', 'std'.
+        """
+
+        # TODO: Option to exclude operating/idling/discrete files.
+        out = []
+        for var, stat in zip(ranking_vars, ranking_stats):
+
+            if not isinstance(var, list):
+                var = list(var)
+
+            col = pd.MultiIndex.from_product([self.files, var])
+
+            if stat in ["max", "abs"]:
+                res = (
+                    *self.summary_stats.loc[col][stat].idxmax(),
+                    stat,
+                    self.summary_stats.loc[col][stat].max(),
+                )
+
+            elif stat == "min":
+                res = (
+                    *self.summary_stats.loc[col][stat].idxmin(),
+                    stat,
+                    self.summary_stats.loc[col][stat].min(),
+                )
+
+            elif stat in ["mean", "std"]:
+                res = (
+                    np.NaN,
+                    ", ".join(var),
+                    stat,
+                    self.summary_stats.loc[col][stat].mean(),
+                )
+
+            else:
+                raise NotImplementedError(
+                    f"Statistic '{stat}' not supported for load ranking."
+                )
+
+            out.append(res)
+
+        return pd.DataFrame(out, columns=["file", "channel", "stat", "val"])
+
     def find_new_minima(self, new):
+        """Returns new minima across `self._minima` and `new`."""
         if self._minima.size == 0:
             self._minima = new
             return
@@ -195,6 +339,7 @@ class pyLife:
         )
 
     def find_new_maxima(self, new):
+        """Returns new maxima across `self._maxima` and `new`."""
         if self._maxima.size == 0:
             self._maxima = new
             return
@@ -222,6 +367,33 @@ class pyLife:
     @property
     def filepaths(self):
         return [os.path.join(self.directory, fn) for fn in self._files]
+
+    @property
+    def summary_stats(self):
+        """Returns summary statistics for all files in `self.files`."""
+
+        if isinstance(self._summary_stats, dict):
+            raise ValueError("Files have not been processed.")
+
+        return self._summary_stats
+
+    @property
+    def aggregate_stats(self):
+        """Returns aggregate statistics for all files in `self.files`."""
+
+        if isinstance(self._aggregate_stats, dict):
+            raise ValueError("Files have not been processed.")
+
+        return self._aggregate_stats
+
+    @property
+    def DELs(self):
+        """Returns damage equivalent loads for all channels in `self._fc`"""
+
+        if isinstance(self._dels, list):
+            raise ValueError("Files have not been processed.")
+
+        return self._dels
 
     @property
     def samples(self):
@@ -343,57 +515,6 @@ class pyLife:
         )
         return kurtosis.flatten()
 
-    # TODO: Unused with the inclusion of fatpack?
-    # def determine_peaks(self, data, prominence):
-    #     """
-    #     Finds the inflection points of `data` with required `prominence`.
-
-    #     Parameters
-    #     ----------
-    #     data : np.array
-    #     prominence : int | float
-    #         Required prominence to be considered a peak.
-
-    #     Returns
-    #     -------
-    #     np.array
-    #         Array of filtered peaks in `data`.
-    #     """
-
-    #     infl = self.find_extrema(data)
-    #     _max, _ = find_peaks(infl, prominence=prominence)
-    #     _min, _ = find_peaks(-infl, prominence=prominence)
-    #     idx = np.array([0, *np.sort(np.append(_max, _min)), len(infl) - 1])
-
-    #     return infl[idx]
-
-    # TODO: Unused with the inclusion of fatpack?
-    # @staticmethod
-    # def find_extrema(data):
-    #     """
-    #     Implementation of `mlife.determine_peaks`.
-
-    #     Parameters
-    #     ----------
-    #     data : np.array
-
-    #     Returns
-    #     -------
-    #     np.array
-    #         Array of inflection points in `data`.
-    #     """
-
-    #     end = data[-1]
-    #     data = data[np.where((data[1:] - data[:-1] != 0))[0]]
-    #     data = np.append(data, end)
-
-    #     back = data[1:-1] - data[:-2]
-    #     forw = data[2:] - data[1:-1]
-    #     sign = np.sign(back) + np.sign(forw)
-    #     idx = np.unique([0, *np.where(sign == 0)[0] + 1, len(data) - 1])
-
-    #     return data[idx]
-
     def compute_windspeed_bins(self):
         """
         Finds bins of width less than or equual to `self._max_bin` for the
@@ -475,43 +596,32 @@ class pyLife:
 
         return num_bins, width, upper_bounds, probabilities
 
-    def compute_dels(self, **kwargs):
-        """Computes damage equivalent loads for channels in `self._fc`."""
+    def append_DELs(self, output, **kwargs):
+        """
+        Appends computed damage equivalent loads for fatigue channels in
+        `self._fc`.
 
-        dfs = []
-        names = []
+        Parameters
+        ----------
+        output : OpenFASTOutput
+        """
 
-        for f in self.files:
-
-            DELs = []
-            output = self.read_file(f)
-
-            for chan, slope in self._fc.items():
-
-                try:
-                    idx = np.where(output.channels == chan)[0][0]
-                    ts = output.data[:, idx]
-
-                except IndexError:
-                    print(f"Channel '{chan}' not found in file '{f}'.")
-                    DELs.append(np.NaN)
-                    continue
-
+        DELs = []
+        for chan, slope in self._fc.items():
+            try:
                 DEL = self._compute_del(
-                    ts, slope, output.elapsed_time, **kwargs
+                    output[chan], slope, output.elapsed_time, **kwargs
                 )
                 DELs.append(DEL)
 
-            dfs.append(DELs)
-            names.append(output.dlc)
+            except IndexError as e:
+                print(f"Channel '{chan}' not found for DEL calculation.")
+                DELS.append(np.NaN)
 
-        df = pd.DataFrame(np.transpose(dfs)).T
-        df.columns = self._fc.keys()
-        df["DLC"] = names
+        self._dels.append(DELs)
 
-        return df.set_index("DLC")
-
-    def _compute_del(self, ts, slope, elapsed, **kwargs):
+    @staticmethod
+    def _compute_del(ts, slope, elapsed, **kwargs):
         """
         Computes damage equivalent load of input `ts`.
 
