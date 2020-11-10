@@ -33,7 +33,7 @@ def test_output():
         ]
     )
 
-    return OpenFASTOutput(test_array)
+    return OpenFASTOutput(test_array, dlc="Test DLC")
 
 
 @pytest.fixture()
@@ -65,4 +65,4 @@ def combined_output():
 
         data.append(output.data)
 
-    return OpenFASTOutput(np.vstack(data))
+    return OpenFASTOutput(np.vstack(data), dlc="Combined DLC")

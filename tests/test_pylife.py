@@ -12,17 +12,23 @@ from OpenFAST_Processors import pyLife
 
 def test_directory_read(data_dir):
 
-    analysis = pyLife(data_dir, operating_files=[f"IEA15MW_DLC_ED_{i:03d}.outb" for i in range(5)])
+    analysis = pyLife(
+        data_dir,
+        operating_files=[f"IEA15MW_DLC_ED_{i:03d}.outb" for i in range(5)],
+    )
     assert len(analysis.files) == 5
 
-    analysis.compute_aggregate_statistics()
+    analysis.process_files()
     assert analysis.samples == 5 * 60001
 
 
 def test_pylife_vs_combined_dataset(data_dir, combined_output):
 
-    life = pyLife(data_dir, operating_files=[f"IEA15MW_DLC_ED_{i:03d}.outb" for i in range(5)])
-    life.compute_aggregate_statistics()
+    life = pyLife(
+        data_dir,
+        operating_files=[f"IEA15MW_DLC_ED_{i:03d}.outb" for i in range(5)],
+    )
+    life.process_files()
 
     # Number of samples
     assert life.samples == combined_output.num_timesteps
@@ -42,7 +48,9 @@ def test_pylife_vs_combined_dataset(data_dir, combined_output):
     assert np.allclose(
         life.third_moments[:, 1:], combined_output.third_moments[1:], rtol=1e-4
     )
-    assert np.allclose(life.fourth_moments, combined_output.fourth_moments, rtol=1e-3)
+    assert np.allclose(
+        life.fourth_moments, combined_output.fourth_moments, rtol=1e-3
+    )
 
     # Stats
     assert np.allclose(life.means, combined_output.means)
