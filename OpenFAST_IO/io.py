@@ -120,17 +120,17 @@ class OpenFASTOutput:
                 self.channels[k]
                 if self.units[k] in ["", "-"]
                 else f"{self.channels[k]} [{self.units[k]}]"
-                for k in range(self.num_channels + 1)
+                for k in range(self.num_channels)
             ]
 
     @dataproperty
     def df(self):
         """Returns `self.data` as a DataFrame."""
 
-        if self.headers is None:
+        if self.channels is None:
             return pd.DataFrame(self.data)
 
-        return pd.DataFrame(self.data, columns=self.headers)
+        return pd.DataFrame(self.data, columns=self.channels)
 
     @dataproperty
     def num_timesteps(self):
